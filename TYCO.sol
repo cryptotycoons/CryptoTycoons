@@ -1,0 +1,222 @@
+// solium-disable linebreak-style
+pragma solidity ^0.4.23;
+
+import "./ITRC20.sol";
+import "./utils/SafeMath.sol";
+import "./TokenRecipient.sol";
+
+/**
+ * @title Standard TRC20 token (compatible with ERC20 token)
+ *
+ * @dev Implementation of the basic standard token.
+ * https://github.com/ethereum/EIPs/blob/master/EIPS/eip-20.md
+ * Originally based on code by FirstBlood: https://github.com/Firstbloodio/token/blob/master/smart_contract/FirstBloodToken.sol
+ */
+contract TYCO is ITRC20 {
+    using SafeMath for uint256;
+
+    string public name = "CryptoTycoonsCoin";
+    string public symbol = "TYCO";
+
+    bool public canApproveCall;
+
+    bool public canBurn;
+
+    mapping (address => uint256) private balances;
+
+    mapping (address => mapping (address => uint256)) private allowed;
+
+    uint8 public decimals = 6;
+    uint256 private _totalSupply = 100000000 * (10 ** uint256(decimals));
+
+    address private owner; 
+
+    event Burn(address addr, uint value);
+
+    constructor() public {
+        owner = msg.sender;
+        balances[owner] = _totalSupply;
+        canApproveCall = false;
+    }
+
+    function totalSupply() external view returns(uint256){
+        return _totalSupply;
+    }
+
+    function setCanApproveCall(bool _val) external {
+        require(msg.sender == owner);
+        require(_val != canApproveCall);
+        canApproveCall = _val;
+    }
+
+    function transferOwnership(address _newOwner) external {
+        require(msg.sender == owner);
+        require(_newOwner != address(0) && _newOwner != owner);
+        owner = _newOwner;
+    }
+
+    /**
+     * @dev Gets the balance of the specified address.
+     * @param _owner The address to query the balance of.
+     * @return An uint256 representing the amount owned by the passed address.
+     */
+    function balanceOf(address _owner) public view returns (uint256) {
+        return balances[_owner];
+    }
+
+    /**
+     * @dev Function to check the amount of tokens that an owner allowed to a spender.
+     * @param _owner address The address which owns the funds.
+     * @param _spender address The address which will spend the funds.
+     * @return A uint256 specifying the amount of tokens still available for the spender.
+     */
+    function allowance(
+        address _owner,
+        address _spender
+    )
+    public
+    view
+    returns (uint256)
+    {
+        return allowed[_owner][_spender];
+    }
+
+    /**
+     * @dev Transfer token for a specified address
+     * @param to The address to transfer to.
+     * @param value The amount to be transferred.
+     */
+    function transfer(address to, uint256 value) public returns (bool) {
+        _transfer(msg.sender, to, value);
+        return true;
+    }
+
+    /**
+     * @dev Approve the passed address to spend the specified amount of tokens on behalf of msg.sender.
+     * Beware that changing an allowance with this method brings the risk that someone may use both the old
+     * and the new allowance by unfortunate transaction ordering. One possible solution to mitigate this
+     * race condition is to first reduce the spender's allowance to 0 and set the desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     * @param spender The address which will spend the funds.
+     * @param value The amount of tokens to be spent.
+     */
+    function approve(address spender, uint256 value) public returns (bool) {
+        require(spender != address(0));
+
+        allowed[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+
+    function approveAndCall(address _spender, uint256 _value, bytes32 _extraData)
+        external
+        returns (bool success) 
+    {
+        require(canApproveCall == true);
+        TokenRecipient spender = TokenRecipient(_spender);
+        if (approve(_spender, _value)) {
+            spender.receiveApproval(msg.sender, _value, _extraData);
+            return true;
+        }
+    }
+    /**
+     * @dev Transfer tokens from one address to another
+     * @param from address The address which you want to send tokens from
+     * @param to address The address which you want to transfer to
+     * @param value uint256 the amount of tokens to be transferred
+     */
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    )
+    public
+    returns (bool)
+    {
+        require(value <= allowed[from][msg.sender]);
+        allowed[from][msg.sender] = allowed[from][msg.sender].sub(value);
+        _transfer(from, to, value);
+        return true;
+    }
+
+    /**
+     * @dev Increase the amount of tokens that an owner allowed to a spender.
+     * approve should be called when allowed_[_spender] == 0. To increment
+     * allowed value is better to use this function to avoid 2 calls (and wait until
+     * the first transaction is mined)
+     * From MonolithDAO Token.sol
+     * @param spender The address which will spend the funds.
+     * @param addedValue The amount of tokens to increase the allowance by.
+     */
+    function increaseAllowance(
+        address spender,
+        uint256 addedValue
+    )
+    public
+    returns (bool)
+    {
+        require(spender != address(0));
+
+        allowed[msg.sender][spender] = (allowed[msg.sender][spender].add(addedValue));
+        emit Approval(msg.sender, spender, allowed[msg.sender][spender]);
+        return true;
+    }
+
+    /**
+     * @dev Decrease the amount of tokens that an owner allowed to a spender.
+     * approve should be called when allowed_[_spender] == 0. To decrement
+     * allowed value is better to use this function to avoid 2 calls (and wait until
+     * the first transaction is mined)
+     * From MonolithDAO Token.sol
+     * @param spender The address which will spend the funds.
+     * @param subtractedValue The amount of tokens to decrease the allowance by.
+     */
+    function decreaseAllowance(
+        address spender,
+        uint256 subtractedValue
+    )
+    public
+    returns (bool)
+    {
+        require(spender != address(0));
+
+        allowed[msg.sender][spender] = (allowed[msg.sender][spender].sub(subtractedValue));
+        emit Approval(msg.sender, spender, allowed[msg.sender][spender]);
+        return true;
+    }
+
+    /**
+     * @dev Transfer token for a specified addresses
+     * @param from The address to transfer from.
+     * @param to The address to transfer to.
+     * @param value The amount to be transferred.
+     */
+    function _transfer(address from, address to, uint256 value) internal returns(bool) {
+        require(to != address(0));
+        uint256 oldFromVal = balances[from];
+        require(value > 0 && oldFromVal >= value);
+
+        balances[from] = balances[from].sub(value);
+        balances[to] = balances[to].add(value);
+        emit Transfer(from, to, value);
+
+        return true;
+    }
+
+    function setCanBurn(bool val) external {
+        require(msg.sender == owner);
+        require(val != canBurn);
+        canBurn = val;
+    }
+
+    function burn(uint256 value) external returns (bool) {
+        require(canBurn == true);
+        uint256 oldBalance = balances[msg.sender];
+        require(oldBalance >= value && _totalSupply > value);
+        balances[msg.sender] = oldBalance.sub(value);
+        _totalSupply = _totalSupply.sub(value);
+        emit Burn(msg.sender, value);
+        return true;
+    }
+}
+
